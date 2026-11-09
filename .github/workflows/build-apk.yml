@@ -7,6 +7,11 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Versione da pubblicare come Release (es. v0.1). Vuoto = solo compilazione."
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -44,4 +49,15 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" ViViApp-*.apk \
             --title "ViViApp $GITHUB_REF_NAME" \
+            --notes "Scarica il file .apk qui sotto direttamente sul tablet e aprilo per installare ViViApp (consenti l'installazione da origini sconosciute se richiesto)."
+      # Avvio manuale con una versione: crea la Release e ci allega l'APK
+      - name: Pubblica Release (avvio manuale)
+        if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          cp ViViApp-*.apk "ViViApp-$TAG.apk" 2>/dev/null || true
+          gh release create "$TAG" "ViViApp-$TAG.apk" --target "$GITHUB_SHA" \
+            --title "ViViApp $TAG" \
             --notes "Scarica il file .apk qui sotto direttamente sul tablet e aprilo per installare ViViApp (consenti l'installazione da origini sconosciute se richiesto)."
