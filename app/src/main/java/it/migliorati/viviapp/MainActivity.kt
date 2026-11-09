@@ -15,6 +15,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
@@ -224,6 +225,7 @@ fun MusicCard(st: MixerState, s: Settings, m: Meters) {
                 OutlinedButton(onClick = { Mixer.stopMusic() }) { Text("■  Stop") }
                 OutlinedButton(onClick = { Mixer.next() }) { Text("⏭  Avanti") }
             }
+            QueueSection(st)
             Spacer(Modifier.height(8.dp))
             LabeledSlider("Volume musica", s.musicVolume, 0f..1f, "${(s.musicVolume * 100).roundToInt()}%") { v ->
                 Mixer.update { it.copy(musicVolume = v) }
@@ -272,10 +274,71 @@ fun MusicCard(st: MixerState, s: Settings, m: Meters) {
     }
 }
 
+// ---------------------------------------------------------------- Coda / playlist nel mixer
+
+@Composable
+fun QueueSection(st: MixerState) {
+    val pls by Mixer.playlists.collectAsState()
+    val lib by Mixer.library.collectAsState()
+    val queue = remember(st.activePlaylist, pls, lib) { Mixer.queue() }
+    Spacer(Modifier.height(12.dp))
+    Text("Playlist della lezione", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Row(
+        Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        FilterChip(selected = st.activePlaylist == null, onClick = { Mixer.loadPlaylist(null) }, label = { Text("Tutta la libreria") })
+        pls.forEach { p ->
+            FilterChip(selected = st.activePlaylist == p.name, onClick = { Mixer.loadPlaylist(p.name) }, label = { Text(p.name) })
+        }
+    }
+    if (queue.isEmpty()) {
+        Text(
+            if (st.activePlaylist != null) "Questa playlist è vuota: aggiungi brani da Libreria → Playlist." else "La libreria è vuota.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    } else {
+        SoftCard(Modifier.fillMaxWidth().heightIn(max = 260.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 4.dp)) {
+                queue.forEachIndexed { i, f ->
+                    val current = st.nowPlaying == f.nameWithoutExtension
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "${i + 1}.", Modifier.width(28.dp),
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            f.nameWithoutExtension, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            fontWeight = if (current) FontWeight.Bold else FontWeight.Normal,
+                            color = if (current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        )
+                        TextButton(onClick = { Mixer.play(f) }) { Text(if (current && st.musicPlaying) "♪" else "▶") }
+                    }
+                }
+            }
+        }
+    }
+}
+
 // ---------------------------------------------------------------- Libreria
 
 @Composable
 fun LibraryTab() {
+    var section by rememberSaveable { mutableIntStateOf(0) }
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = section == 0, onClick = { section = 0 }, label = { Text("Brani") })
+            FilterChip(selected = section == 1, onClick = { section = 1 }, label = { Text("Playlist") })
+        }
+        Box(Modifier.weight(1f)) { if (section == 0) TracksSection() else PlaylistsSection() }
+    }
+}
+
+@Composable
+fun TracksSection() {
     val lib by Mixer.library.collectAsState()
     val st by Mixer.state.collectAsState()
     var toDelete by remember { mutableStateOf<File?>(null) }
@@ -323,6 +386,145 @@ fun LibraryTab() {
             confirmButton = { TextButton(onClick = { Mixer.delete(f); toDelete = null }) { Text("Elimina") } },
             dismissButton = { TextButton(onClick = { toDelete = null }) { Text("Annulla") } },
         )
+    }
+}
+
+// ---------------------------------------------------------------- Playlist
+
+@Composable
+fun PlaylistsSection() {
+    val pls by Mixer.playlists.collectAsState()
+    val st by Mixer.state.collectAsState()
+    var editing by rememberSaveable { mutableStateOf<String?>(null) }
+    var creating by remember { mutableStateOf(false) }
+    var toDelete by remember { mutableStateOf<String?>(null) }
+
+    val edit = editing
+    if (edit != null && pls.any { it.name == edit }) {
+        PlaylistEditor(edit, onRenamed = { editing = it }, onClose = { editing = null })
+        return
+    }
+
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                if (pls.isEmpty()) "Crea una playlist per ogni tipo di lezione." else "${pls.size} playlist",
+                Modifier.weight(1f),
+            )
+            Button(onClick = { creating = true }) { Text("+  Nuova playlist") }
+        }
+        Spacer(Modifier.height(8.dp))
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(pls, key = { it.name }) { p ->
+                val active = st.activePlaylist == p.name
+                SoftCard(Modifier.fillMaxWidth()) {
+                    Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(p.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                "${p.tracks.size} brani" + if (active) " · caricata nel mixer" else "",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        if (!active) TextButton(onClick = { Mixer.loadPlaylist(p.name) }) { Text("Carica nel mixer") }
+                        TextButton(onClick = { editing = p.name }) { Text("Modifica") }
+                        TextButton(onClick = { toDelete = p.name }) { Text("Elimina") }
+                    }
+                }
+            }
+        }
+    }
+
+    if (creating) {
+        var name by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { creating = false },
+            title = { Text("Nuova playlist") },
+            text = {
+                OutlinedTextField(
+                    value = name, onValueChange = { name = it }, singleLine = true,
+                    placeholder = { Text("es. Yin del giovedì") },
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { editing = Mixer.createPlaylist(name); creating = false }) { Text("Crea") }
+            },
+            dismissButton = { TextButton(onClick = { creating = false }) { Text("Annulla") } },
+        )
+    }
+    toDelete?.let { n ->
+        AlertDialog(
+            onDismissRequest = { toDelete = null },
+            title = { Text("Eliminare la playlist?") },
+            text = { Text("\"$n\" viene eliminata. I brani restano in Libreria.") },
+            confirmButton = { TextButton(onClick = { Mixer.deletePlaylist(n); toDelete = null }) { Text("Elimina") } },
+            dismissButton = { TextButton(onClick = { toDelete = null }) { Text("Annulla") } },
+        )
+    }
+}
+
+@Composable
+fun PlaylistEditor(name: String, onRenamed: (String) -> Unit, onClose: () -> Unit) {
+    val pls by Mixer.playlists.collectAsState()
+    val lib by Mixer.library.collectAsState()
+    val pl = pls.firstOrNull { it.name == name } ?: return
+    var title by remember(name) { mutableStateOf(name) }
+    val inList = pl.tracks.filter { t -> lib.any { it.name == t } }
+    val available = lib.filter { it.name !in pl.tracks }
+
+    fun setTracks(t: List<String>) = Mixer.setPlaylistTracks(name, t)
+
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = title, onValueChange = { title = it }, singleLine = true,
+                    label = { Text("Nome della playlist") }, modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(8.dp))
+                Button(onClick = { onRenamed(Mixer.renamePlaylist(name, title)); onClose() }) { Text("Fatto") }
+            }
+            Spacer(Modifier.height(8.dp))
+            Text("Ordine dei brani (${inList.size})", style = MaterialTheme.typography.titleMedium)
+            if (inList.isEmpty()) Text(
+                "Nessun brano: aggiungili dall'elenco qui sotto.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        itemsIndexed(inList, key = { _, t -> "in:$t" }) { i, t ->
+            SoftCard(Modifier.fillMaxWidth()) {
+                Row(Modifier.padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("${i + 1}.", Modifier.width(28.dp), style = MaterialTheme.typography.bodySmall)
+                    Text(t.substringBeforeLast('.'), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    TextButton(enabled = i > 0, onClick = {
+                        setTracks(inList.toMutableList().also { l -> l.add(i - 1, l.removeAt(i)) })
+                    }) { Text("↑") }
+                    TextButton(enabled = i < inList.size - 1, onClick = {
+                        setTracks(inList.toMutableList().also { l -> l.add(i + 1, l.removeAt(i)) })
+                    }) { Text("↓") }
+                    TextButton(onClick = { setTracks(inList - t) }) { Text("Togli") }
+                }
+            }
+        }
+        item {
+            Spacer(Modifier.height(10.dp))
+            Text("Aggiungi dalla libreria", style = MaterialTheme.typography.titleMedium)
+            if (available.isEmpty()) Text(
+                "Tutti i brani della libreria sono già nella playlist.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        items(available, key = { "av:" + it.name }) { f ->
+            Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(f.nameWithoutExtension, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                TextButton(onClick = { setTracks(inList + f.name) }) { Text("+ Aggiungi") }
+            }
+        }
     }
 }
 
@@ -466,21 +668,59 @@ private fun TrackRow(t: FoundTrack, f: FinderState) {
 
 // ---------------------------------------------------------------- Genera
 
-private val presets = listOf(
-    "Calma" to "ambient, meditation, calm, soft synth pad, warm drones, peaceful, slow, 60 BPM, instrumental",
-    "Campane tibetane" to "tibetan singing bowls, meditation, ambient drone, resonant, peaceful, slow, instrumental",
-    "Natura" to "ambient, nature sounds, flowing water, soft pad, gentle piano, relaxing, instrumental",
-    "Flow / Vinyasa" to "downtempo, chillout, soft hand percussion, warm bass, flowing, uplifting, 90 BPM, instrumental",
-    "Indiana" to "indian classical, bansuri flute, tanpura drone, slow raga, meditative, instrumental",
-    "Savasana" to "deep ambient, slow drone, soft piano, sleepy, very relaxing, 50 BPM, instrumental",
+/** Stili suggeriti per le varie branche dello yoga: nome, a cosa serve, prompt per ACE-Step, durata. */
+data class YogaStyle(val name: String, val desc: String, val prompt: String, val seconds: Int)
+
+private val yogaStyles = listOf(
+    YogaStyle("Hatha", "Ritmo lento e regolare, per tenere le posizioni con calma.",
+        "ambient, soft piano, warm pads, gentle hand drum, calm, steady, 70 BPM, instrumental", 240),
+    YogaStyle("Vinyasa Flow", "Scorrevole e fluido, accompagna il passaggio tra le posizioni sul respiro.",
+        "downtempo, organic chillout, soft hand percussion, warm bass, flowing, uplifting, 90 BPM, instrumental", 240),
+    YogaStyle("Ashtanga", "Costante e ipnotico, sostiene la sequenza senza distrarre.",
+        "minimal, hypnotic, tanpura drone, steady soft percussion, focused, repetitive, 80 BPM, instrumental", 240),
+    YogaStyle("Power Yoga", "Più energico, per le lezioni dinamiche e di forza.",
+        "energetic downtempo, deep groove, tribal percussion, motivating, driving, 100 BPM, instrumental", 240),
+    YogaStyle("Yin", "Lentissimo e profondo, per le posizioni tenute a lungo.",
+        "deep ambient, slow evolving drones, soft piano notes, spacious, very slow, 50 BPM, instrumental", 240),
+    YogaStyle("Restorative", "Morbido e avvolgente, per il recupero e il rilassamento.",
+        "soft ambient, warm strings, gentle piano, soothing, peaceful, slow, 55 BPM, instrumental", 240),
+    YogaStyle("Yoga Nidra", "Quasi senza ritmo, per il rilassamento guidato e il sonno cosciente.",
+        "dreamy ambient, deep drone, soft textures, no percussion, sleepy, floating, 45 BPM, instrumental", 240),
+    YogaStyle("Kundalini", "Mantrico e ripetitivo, per kriya, respiri e meditazioni attive.",
+        "kundalini, gong, tanpura drone, harmonium, mantra-like, hypnotic, rhythmic, 75 BPM, instrumental", 240),
+    YogaStyle("Iyengar", "Discreto e neutro, per lavorare sull'allineamento con concentrazione.",
+        "minimal ambient, soft piano, subtle pads, neutral, focused, unobtrusive, 65 BPM, instrumental", 240),
+    YogaStyle("Sivananda", "Tradizionale indiano, sereno, per la sequenza classica.",
+        "indian classical, sitar, bansuri flute, tanpura drone, serene, devotional, slow raga, instrumental", 240),
+    YogaStyle("Jivamukti", "Spirituale ma vivace, tra devozione e movimento.",
+        "devotional, harmonium, tabla, uplifting, spiritual, groove, 85 BPM, instrumental", 240),
+    YogaStyle("Anusara", "Luminoso e aperto, per una pratica gioiosa.",
+        "bright ambient, acoustic guitar, soft piano, warm, joyful, heart opening, 80 BPM, instrumental", 240),
+    YogaStyle("Hot Yoga", "Costante e motivante, per le sequenze lunghe in sala calda.",
+        "deep house chill, steady groove, warm pads, motivating, hypnotic, 95 BPM, instrumental", 240),
+    YogaStyle("Pranayama", "Sospeso e regolare, lascia spazio al respiro.",
+        "breathing meditation, soft drone, gentle pulse, airy pads, slow, calm, 60 BPM, instrumental", 180),
+    YogaStyle("Meditazione", "Immobile e profondo, campane e bordoni.",
+        "tibetan singing bowls, crystal bowls, deep drone, meditation, timeless, peaceful, instrumental", 240),
+    YogaStyle("Chakra / Sound healing", "Bagno sonoro di campane e frequenze calde.",
+        "sound bath, crystal singing bowls, gong, overtone drones, healing, resonant, instrumental", 240),
+    YogaStyle("Yoga in gravidanza", "Dolce e rassicurante, per le mamme in attesa.",
+        "gentle lullaby, soft piano, warm strings, tender, calm, nurturing, slow, instrumental", 240),
+    YogaStyle("Yoga per bambini", "Allegro e giocoso, con suoni della natura.",
+        "playful, light marimba, ukulele, birds, nature, happy, gentle, 95 BPM, instrumental", 180),
+    YogaStyle("Saluto al sole", "Che sale piano, per le sequenze di apertura del mattino.",
+        "sunrise, uplifting ambient, soft percussion building, bright, hopeful, 85 BPM, instrumental", 180),
+    YogaStyle("Savasana", "Per il rilassamento finale, che sfuma nel silenzio.",
+        "deep ambient, slow drone, soft piano, sleepy, very relaxing, fading, 50 BPM, instrumental", 240),
 )
 
 @Composable
 fun GenerateTab() {
     val st by Mixer.state.collectAsState()
     val s by Mixer.settings.collectAsState()
-    var prompt by rememberSaveable { mutableStateOf(presets[0].second) }
-    var seconds by rememberSaveable { mutableFloatStateOf(180f) }
+    var prompt by rememberSaveable { mutableStateOf(yogaStyles[0].prompt) }
+    var seconds by rememberSaveable { mutableFloatStateOf(yogaStyles[0].seconds.toFloat()) }
+    val selected = yogaStyles.firstOrNull { it.prompt == prompt }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         SoftCard(Modifier.fillMaxWidth()) {
@@ -509,11 +749,28 @@ fun GenerateTab() {
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Spacer(Modifier.height(8.dp))
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    presets.forEach { (name, p) ->
-                        FilterChip(selected = prompt == p, onClick = { prompt = p }, label = { Text(name) })
+                Text("Stili per le branche dello yoga", style = MaterialTheme.typography.labelLarge)
+                // Due file di stili che scorrono in orizzontale
+                yogaStyles.chunked((yogaStyles.size + 1) / 2).forEach { row ->
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()).padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        row.forEach { y ->
+                            FilterChip(
+                                selected = prompt == y.prompt,
+                                onClick = { prompt = y.prompt; seconds = y.seconds.toFloat() },
+                                label = { Text(y.name) },
+                            )
+                        }
                     }
                 }
+                Text(
+                    selected?.let { "${it.name}: ${it.desc}" } ?: "Stile personalizzato.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 6.dp),
+                )
                 OutlinedTextField(
                     value = prompt, onValueChange = { prompt = it },
                     label = { Text("Stile della musica") }, minLines = 3,
