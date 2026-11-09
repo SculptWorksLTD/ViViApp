@@ -370,8 +370,12 @@ object Mixer {
     fun delete(file: File) {
         if (music.current == file) music.release().also { publishMusic() }
         file.delete()
+        File(file.path + ".json").delete()   // eventuali crediti del brano
         reloadLibrary()
     }
+
+    /** Nuovo file in Libreria con nome libero (aggiunge _2, _3… se esiste già). */
+    fun newLibraryFile(name: String): File = uniqueFile(name)
 
     private fun uniqueFile(name: String): File {
         var f = File(musicDir, name)
