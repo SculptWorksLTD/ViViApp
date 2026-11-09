@@ -99,8 +99,23 @@ class MusicPlayer(private val scope: CoroutineScope, private val settings: () ->
 
     // ---------------- Trasporto ----------------
 
-    fun play(file: File, output: AudioDeviceInfo) {
-        release()
+    /** Chiamata qualche secondo prima della fine del brano, per la dissolvenza col successivo. */
+    var onNearEnd: (() -> Unit)? = null
+    private var nearEndFired = false
+
+    /** crossfadeSec > 0: il brano attuale sfuma mentre il nuovo entra (dissolvenza incrociata). */
+    fun play(file: File, output: AudioDeviceInfo, crossfadeSec: Float = 0f) {
+        val old = mp
+        if (crossfadeSec > 0f && old != null && isPlaying) {
+            // Il vecchio lettore continua da solo e sfuma; qui ne prepariamo uno nuovo
+            fadeJob?.cancel(); watchJob?.cancel()
+            releaseMonitor()
+            old.setOnCompletionListener(null)
+            fadeOutAndRelease(old, crossfadeSec)
+            mp = null
+        } else {
+            release()
+        }
         val s = settings()
         val p = MediaPlayer()
         p.setAudioAttributes(
@@ -122,12 +137,14 @@ class MusicPlayer(private val scope: CoroutineScope, private val settings: () ->
         mp = p
         current = file
         endFadeStarted = false
-        fadeGain = if (s.fadeOn) 0f else 1f
+        nearEndFired = false
+        val fadeIn = if (crossfadeSec > 0f) crossfadeSec else if (s.fadeOn) s.fadeInSec else 0f
+        fadeGain = if (fadeIn > 0f) 0f else 1f
         applyVolume()
         p.start()
         isPlaying = true
         refreshMonitor()
-        if (s.fadeOn) fadeTo(1f, s.fadeInSec)
+        if (fadeIn > 0f) fadeTo(1f, fadeIn)
         startWatch()
         onChanged?.invoke()
     }
@@ -197,6 +214,24 @@ class MusicPlayer(private val scope: CoroutineScope, private val settings: () ->
         isPlaying = false
     }
 
+    private fun fadeOutAndRelease(p: MediaPlayer, seconds: Float) {
+        val s = settings()
+        val startV = s.musicVolume * s.musicVolume * fadeGain * duck
+        scope.launch {
+            val steps = max(1, (seconds * 1000 / 30).toInt())
+            for (i in 1..steps) {
+                delay(30)
+                val v = startV * (1f - i.toFloat() / steps)
+                try { p.setVolume(v, v) } catch (_: Exception) { break }
+            }
+            try { p.stop() } catch (_: Exception) {}
+            p.release()
+        }
+    }
+
+    /** Posizione e durata del brano (ms), per il controllo dai tasti dell'auricolare. */
+    fun positionMs(): Long = try { mp?.currentPosition?.toLong() ?: 0L } catch (_: Exception) { 0L }
+
     private fun fadeTo(target: Float, seconds: Float, then: (() -> Unit)? = null) {
         fadeJob?.cancel()
         fadeJob = scope.launch {
@@ -221,7 +256,13 @@ class MusicPlayer(private val scope: CoroutineScope, private val settings: () ->
                 val p = mp ?: break
                 val s = settings()
                 try {
-                    if (isPlaying && s.fadeOn && !p.isLooping && !endFadeStarted) {
+                    // Dissolvenza col brano successivo (solo se si passa da soli al brano dopo)
+                    val crossing = s.crossfadeOn && s.autoNext && !p.isLooping
+                    if (isPlaying && crossing && !nearEndFired && p.duration > 0) {
+                        val left = p.duration - p.currentPosition
+                        if (left <= s.crossfadeSec * 1000) { nearEndFired = true; onNearEnd?.invoke(); continue }
+                    }
+                    if (isPlaying && s.fadeOn && !crossing && !p.isLooping && !endFadeStarted) {
                         val left = p.duration - p.currentPosition
                         if (p.duration > 0 && left <= s.fadeOutSec * 1000) {
                             endFadeStarted = true

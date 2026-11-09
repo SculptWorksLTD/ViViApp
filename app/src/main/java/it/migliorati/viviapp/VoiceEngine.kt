@@ -9,6 +9,7 @@ import android.media.AudioTrack
 import android.media.MediaRecorder
 import android.os.Build
 import android.os.Process
+import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.max
 
 /**
@@ -27,6 +28,13 @@ class VoiceEngine(private val settings: () -> Settings) {
     var onError: ((String) -> Unit)? = null
 
     private var thread: Thread? = null
+
+    // Suoni (campane, bip di prova) da mescolare nel canale verso le clienti
+    private class Voice(val buf: FloatArray, val gain: Float) { var pos = 0 }
+    private val pending = ConcurrentLinkedQueue<Voice>()
+
+    /** Manda un suono nel mix (funziona mentre la lezione è in onda). */
+    fun playSound(buf: FloatArray, gain: Float) { pending.add(Voice(buf, gain)) }
 
     fun start(input: AudioDeviceInfo?, output: AudioDeviceInfo, bluetooth: Boolean, burstHint: Int) {
         if (running) return
@@ -104,6 +112,8 @@ class VoiceEngine(private val settings: () -> Settings) {
             var lastUnderruns = track.underrunCount
 
             val processor = VoiceProcessor(sr)
+            val active = ArrayList<Voice>()
+            pending.clear()
             val inBuf = FloatArray(chunk)
             val outBuf = FloatArray(chunk * 2)
 
@@ -126,6 +136,19 @@ class VoiceEngine(private val settings: () -> Settings) {
                 val pk = processor.process(inBuf, chunk, s.voiceClean, s.voiceGainDb, s.voiceMuted)
                 envelopeDb = processor.levelDb
                 peak = pk
+                // Campane e suoni sopra la voce (dopo la catena voce, quindi non compressi)
+                while (true) { active.add(pending.poll() ?: break) }
+                if (active.isNotEmpty()) {
+                    val iter = active.iterator()
+                    while (iter.hasNext()) {
+                        val v = iter.next()
+                        val n = minOf(chunk, v.buf.size - v.pos)
+                        for (i in 0 until n) inBuf[i] += v.buf[v.pos + i] * v.gain
+                        v.pos += n
+                        if (v.pos >= v.buf.size) iter.remove()
+                    }
+                    for (i in 0 until chunk) inBuf[i] = inBuf[i].coerceIn(-0.95f, 0.95f)
+                }
                 for (i in 0 until chunk) {
                     outBuf[2 * i] = inBuf[i]
                     outBuf[2 * i + 1] = inBuf[i]

@@ -46,7 +46,7 @@ data class FinderState(
     val loading: Boolean = false,
     val tracks: List<FoundTrack> = emptyList(),
     val albums: List<FoundAlbum> = emptyList(),
-    val message: String = "",
+    val message: UiText? = null,
     val previewId: String? = null,
     val previewLoading: Boolean = false,
     val downloading: Set<String> = emptySet(),
@@ -75,7 +75,7 @@ object MusicFinder {
         val q = query.trim()
         if (q.isEmpty()) return
         stopPreview()
-        state.update { it.copy(loading = true, message = "Cerco \"$q\"…", tracks = emptyList(), albums = emptyList(), expanded = emptySet()) }
+        state.update { it.copy(loading = true, message = { tr("Searching \"$q\"…", "Tražim \"$q\"…", "Cerco \"$q\"…") }, tracks = emptyList(), albums = emptyList(), expanded = emptySet()) }
         scope.launch {
             val ov = if (useOpenverse) async(Dispatchers.IO) { runCatching { searchOpenverse(q) } } else null
             val ia = if (useArchive) async(Dispatchers.IO) { runCatching { searchArchive(q) } } else null
@@ -87,10 +87,13 @@ object MusicFinder {
             )
             val t = tracks?.getOrNull().orEmpty()
             val a = albums?.getOrNull().orEmpty()
-            val msg = when {
-                errors.isNotEmpty() && t.isEmpty() && a.isEmpty() -> "Ricerca non riuscita. " + errors.joinToString(" · ")
-                t.isEmpty() && a.isEmpty() -> "Nessun risultato. Prova con parole in inglese (es. meditation, ambient, relaxing piano)."
-                else -> "${t.size} brani e ${a.size} album" + (if (errors.isNotEmpty()) " (" + errors.joinToString(" · ") + ")" else "")
+            val err = errors.joinToString(" · ")
+            val nt = t.size
+            val na = a.size
+            val msg: UiText = when {
+                errors.isNotEmpty() && t.isEmpty() && a.isEmpty() -> { { tr("Search failed. ", "Pretraga nije uspjela. ", "Ricerca non riuscita. ") + err } }
+                t.isEmpty() && a.isEmpty() -> { { tr("No results. Try English words (e.g. meditation, ambient, relaxing piano).", "Nema rezultata. Pokušaj s engleskim riječima (npr. meditation, ambient, relaxing piano).", "Nessun risultato. Prova con parole in inglese (es. meditation, ambient, relaxing piano).") } }
+                else -> { { tr("$nt tracks and $na albums", "$nt pjesama i $na albuma", "$nt brani e $na album") + (if (err.isNotEmpty()) " ($err)" else "") } }
             }
             state.update { it.copy(loading = false, tracks = t, albums = a, message = msg) }
         }
@@ -102,7 +105,7 @@ object MusicFinder {
         c.readTimeout = 20_000
         c.setRequestProperty("User-Agent", "ViViApp")
         val code = c.responseCode
-        if (code == 429) throw IllegalStateException("troppe ricerche, riprova tra un minuto")
+        if (code == 429) throw IllegalStateException(tr("too many searches, try again in a minute", "previše pretraga, pokušaj za minutu", "troppe ricerche, riprova tra un minuto"))
         if (code != 200) throw IllegalStateException("HTTP $code")
         return c.inputStream.bufferedReader().readText()
     }
@@ -129,8 +132,8 @@ object MusicFinder {
             val ver = r.optString("license_version")
             out += FoundTrack(
                 id = "ov:" + r.getString("id"),
-                title = r.optString("title").ifBlank { "Senza titolo" },
-                creator = r.optString("creator").ifBlank { "Autore sconosciuto" },
+                title = r.optString("title").ifBlank { "Untitled" },
+                creator = r.optString("creator").ifBlank { "Unknown artist" },
                 url = url,
                 durationSec = r.optLong("duration", 0).takeIf { it > 0 }?.let { (it / 1000).toInt() },
                 license = licenseLabel(lic, ver),
@@ -154,7 +157,7 @@ object MusicFinder {
             out += FoundAlbum(
                 id = d.getString("identifier"),
                 title = textOf(d, "title").ifBlank { d.getString("identifier") },
-                creator = textOf(d, "creator").ifBlank { "Autore sconosciuto" },
+                creator = textOf(d, "creator").ifBlank { "Unknown artist" },
                 license = licenseFromUrl(textOf(d, "licenseurl")),
             )
         }
@@ -217,16 +220,16 @@ object MusicFinder {
     }
 
     private fun licenseLabel(code: String, version: String): String = when (code.lowercase()) {
-        "cc0" -> "CC0 (libero)"
-        "pdm" -> "Pubblico dominio"
-        "" -> "Licenza libera"
+        "cc0" -> "CC0"
+        "pdm" -> "Public domain"
+        "" -> "Open licence"
         else -> "CC ${code.uppercase()} $version".trim()
     }
 
     private fun licenseFromUrl(u: String): String {
         val l = u.lowercase()
         return when {
-            "publicdomain" in l || "/zero/" in l -> "CC0 / Pubblico dominio"
+            "publicdomain" in l || "/zero/" in l -> "CC0 / Public domain"
             "/licenses/" in l -> {
                 val parts = l.substringAfter("/licenses/").trim('/').split('/')
                 "CC " + parts.getOrElse(0) { "" }.uppercase() + (parts.getOrNull(1)?.let { " $it" } ?: "")
@@ -242,7 +245,7 @@ object MusicFinder {
         if (state.value.previewId == t.id) { stopPreview(); return }
         stopPreview()
         if (Mixer.state.value.sessionOn) {
-            state.update { it.copy(message = "L'anteprima è disponibile a lezione ferma.") }
+            state.update { it.copy(message = { tr("Preview is available when no lesson is running.", "Pregled je dostupan kad sat nije u tijeku.", "L'anteprima è disponibile a lezione ferma.") }) }
             return
         }
         val am = app.getSystemService(AudioManager::class.java)
@@ -265,14 +268,15 @@ object MusicFinder {
             p.setOnCompletionListener { stopPreview() }
             p.setOnErrorListener { _, _, _ ->
                 stopPreview()
-                state.update { it.copy(message = "Anteprima non disponibile per questo brano.") }
+                state.update { it.copy(message = { tr("Preview not available for this track.", "Pregled nije dostupan za ovu pjesmu.", "Anteprima non disponibile per questo brano.") }) }
                 true
             }
             p.prepareAsync()
             preview = p
         } catch (e: Exception) {
             stopPreview()
-            state.update { it.copy(message = "Anteprima non disponibile: ${e.message}") }
+            val m = e.message
+            state.update { it.copy(message = { tr("Preview not available: ", "Pregled nije dostupan: ", "Anteprima non disponibile: ") + m }) }
         }
     }
 
@@ -319,9 +323,10 @@ object MusicFinder {
             }
             result.onSuccess { f ->
                 Mixer.reloadLibrary()
-                state.update { it.copy(downloading = it.downloading - t.id, downloaded = it.downloaded + t.id, message = "\"${t.title}\" è in Libreria.") }
+                state.update { it.copy(downloading = it.downloading - t.id, downloaded = it.downloaded + t.id, message = { tr("\"${t.title}\" is in the Library.", "\"${t.title}\" je u Knjižnici.", "\"${t.title}\" è in Libreria.") }) }
             }.onFailure { e ->
-                state.update { it.copy(downloading = it.downloading - t.id, message = "Download non riuscito: ${e.message}") }
+                val m = e.message
+                state.update { it.copy(downloading = it.downloading - t.id, message = { tr("Download failed: ", "Preuzimanje nije uspjelo: ", "Download non riuscito: ") + m }) }
             }
         }
     }
