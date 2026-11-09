@@ -66,6 +66,7 @@ fun App() {
         tr("Find music", "Traži glazbu", "Cerca musica"),
         tr("Generate", "Generiraj", "Genera"),
         tr("Settings", "Postavke", "Impostazioni"),
+        tr("Guide", "Vodič", "Guida"),
     )
     // Controllo aggiornamenti all'apertura
     LaunchedEffect(Unit) { if (Mixer.settings.value.autoUpdate) Mixer.checkUpdate(manual = false) }
@@ -113,7 +114,8 @@ fun App() {
                     2 -> PlansTab()
                     3 -> SearchTab()
                     4 -> GenerateTab()
-                    else -> SettingsTab()
+                    5 -> SettingsTab()
+                    else -> GuideTab()
                 }
             }
         }

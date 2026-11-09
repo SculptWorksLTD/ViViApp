@@ -1,5 +1,7 @@
 # ViViApp
 
+**Manuale / Manual / Priručnik:** [Italiano](docs/MANUALE_IT.md) · [English](docs/MANUAL_EN.md) · [Hrvatski](docs/PRIRUCNIK_HR.md)
+
 App Android per lezioni di yoga in cuffia: la voce dell'insegnante (microfono Bluetooth) e la musica vengono mixate sul tablet e mandate dal cavo USB-C al trasmettitore delle cuffie.
 
 ```
