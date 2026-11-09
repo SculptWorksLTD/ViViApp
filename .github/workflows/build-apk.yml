@@ -2,7 +2,12 @@ name: Compila APK
 
 on:
   push:
+    branches: ["**"]
+    tags: ["v*"]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -17,7 +22,18 @@ jobs:
         with:
           gradle-version: 8.10.2
       - run: gradle assembleRelease
+      - name: Rinomina APK
+        run: cp app/build/outputs/apk/release/*.apk ViViApp-${GITHUB_REF_NAME//\//-}.apk
       - uses: actions/upload-artifact@v4
         with:
           name: ViViApp-apk
-          path: app/build/outputs/apk/release/*.apk
+          path: ViViApp-*.apk
+      # Su un tag v* (es. v0.1) pubblica l'APK come Release scaricabile
+      - name: Pubblica Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" ViViApp-*.apk \
+            --title "ViViApp $GITHUB_REF_NAME" \
+            --notes "Scarica il file .apk qui sotto direttamente sul tablet e aprilo per installare ViViApp (consenti l'installazione da origini sconosciute se richiesto)."
