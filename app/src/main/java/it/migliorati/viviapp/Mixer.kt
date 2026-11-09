@@ -44,6 +44,7 @@ data class MixerState(
     val selectedInputId: Int? = null,
     val status: String = "Premi \"Avvia lezione\"",
     val nowPlaying: String? = null,
+    val activePlaylist: String? = null,   // null = tutta la libreria
     val musicPlaying: Boolean = false,
     val generating: Boolean = false,
     val genStatus: String = "",
@@ -71,6 +72,8 @@ object Mixer {
     val meters = MutableStateFlow(Meters())
     val library = MutableStateFlow<List<File>>(emptyList())
     val updateState = MutableStateFlow(UpdateState())
+    val playlists = MutableStateFlow<List<Playlist>>(emptyList())
+    private lateinit var playlistStore: PlaylistStore
 
     private lateinit var voice: VoiceEngine
     private lateinit var music: MusicPlayer
@@ -106,6 +109,8 @@ object Mixer {
             }
         }, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY), ContextCompat.RECEIVER_NOT_EXPORTED)
 
+        playlistStore = PlaylistStore(app)
+        playlists.value = playlistStore.load()
         reloadLibrary()
         refresh()
         scope.launch { while (true) { tick(); delay(30) } }
@@ -326,16 +331,64 @@ object Mixer {
             return
         }
         if (music.hasTrack()) music.resume(out)
-        else library.value.firstOrNull()?.let { play(it) }
+        else queue().firstOrNull()?.let { play(it) }
     }
 
     fun stopMusic() = music.stop()
 
     fun next() {
-        val lib = library.value
-        if (lib.isEmpty()) return
-        val i = lib.indexOfFirst { it == music.current }
-        play(lib[(i + 1) % lib.size])
+        val q = queue()
+        if (q.isEmpty()) return
+        val i = q.indexOfFirst { it == music.current }
+        play(q[(i + 1) % q.size])
+    }
+
+    // ---------------- Playlist ----------------
+
+    /** Coda di riproduzione: la playlist caricata nel mixer, oppure tutta la libreria. */
+    fun queue(): List<File> {
+        val name = state.value.activePlaylist ?: return library.value
+        val pl = playlists.value.firstOrNull { it.name == name } ?: return library.value
+        val byName = library.value.associateBy { it.name }
+        return pl.tracks.mapNotNull { byName[it] }
+    }
+
+    /** Carica una playlist nel mixer (null = tutta la libreria). */
+    fun loadPlaylist(name: String?) {
+        state.update { it.copy(activePlaylist = name) }
+    }
+
+    private fun savePlaylists(list: List<Playlist>) {
+        playlists.value = list
+        try { playlistStore.save(list) } catch (_: Exception) {}
+    }
+
+    /** Crea una playlist; restituisce il nome effettivo (unico). */
+    fun createPlaylist(name: String): String {
+        val base = name.trim().ifEmpty { "Nuova lezione" }
+        var n = base
+        var i = 2
+        while (playlists.value.any { it.name.equals(n, ignoreCase = true) }) { n = "$base $i"; i++ }
+        savePlaylists(playlists.value + Playlist(n, emptyList()))
+        return n
+    }
+
+    fun renamePlaylist(old: String, new: String): String {
+        val target = new.trim()
+        if (target.isEmpty() || target == old) return old
+        if (playlists.value.any { it.name.equals(target, ignoreCase = true) && it.name != old }) return old
+        savePlaylists(playlists.value.map { if (it.name == old) it.copy(name = target) else it })
+        if (state.value.activePlaylist == old) state.update { it.copy(activePlaylist = target) }
+        return target
+    }
+
+    fun deletePlaylist(name: String) {
+        savePlaylists(playlists.value.filterNot { it.name == name })
+        if (state.value.activePlaylist == name) state.update { it.copy(activePlaylist = null) }
+    }
+
+    fun setPlaylistTracks(name: String, tracks: List<String>) {
+        savePlaylists(playlists.value.map { if (it.name == name) it.copy(tracks = tracks) else it })
     }
 
     // ---------------- Libreria ----------------
@@ -371,6 +424,10 @@ object Mixer {
         if (music.current == file) music.release().also { publishMusic() }
         file.delete()
         File(file.path + ".json").delete()   // eventuali crediti del brano
+        // Toglie il brano anche dalle playlist
+        if (playlists.value.any { file.name in it.tracks }) {
+            savePlaylists(playlists.value.map { p -> p.copy(tracks = p.tracks.filterNot { it == file.name }) })
+        }
         reloadLibrary()
     }
 
