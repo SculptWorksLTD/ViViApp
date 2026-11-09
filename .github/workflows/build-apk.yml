@@ -1,0 +1,63 @@
+name: Compila APK
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Versione da pubblicare come Release (es. v0.1). Vuoto = solo compilazione."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
+      - run: gradle assembleRelease
+      - name: Rinomina APK
+        run: cp app/build/outputs/apk/release/*.apk ViViApp-${GITHUB_REF_NAME//\//-}.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ViViApp-apk
+          path: ViViApp-*.apk
+      # Quando si pubblica una Release, ci allega l'APK
+      - name: Allega APK alla Release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" ViViApp-*.apk --clobber
+      # Su un tag v* spinto da git, crea la Release con l'APK
+      - name: Pubblica Release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" ViViApp-*.apk \
+            --title "ViViApp $GITHUB_REF_NAME" \
+            --notes "Scarica il file .apk qui sotto direttamente sul tablet e aprilo per installare ViViApp (consenti l'installazione da origini sconosciute se richiesto)."
+      # Avvio manuale con una versione: crea la Release e ci allega l'APK
+      - name: Pubblica Release (avvio manuale)
+        if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          cp ViViApp-*.apk "ViViApp-$TAG.apk" 2>/dev/null || true
+          gh release create "$TAG" "ViViApp-$TAG.apk" --target "$GITHUB_SHA" \
+            --title "ViViApp $TAG" \
+            --notes "Scarica il file .apk qui sotto direttamente sul tablet e aprilo per installare ViViApp (consenti l'installazione da origini sconosciute se richiesto)."
