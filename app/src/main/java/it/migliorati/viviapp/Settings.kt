@@ -33,6 +33,8 @@ data class Settings(
     val commMode: Boolean = true,
     // Prova senza hardware (emulatore): usa altoparlante e microfono del dispositivo
     val testMode: Boolean = false,
+    // Controlla gli aggiornamenti all'apertura dell'app
+    val autoUpdate: Boolean = true,
     // Generatore AI
     val serverUrl: String = "",
     val serverToken: String = "",
@@ -72,6 +74,7 @@ class SettingsStore(ctx: Context) {
                 autoResume = b("autoResume", d.autoResume),
                 commMode = b("commMode", d.commMode),
                 testMode = b("testMode", d.testMode),
+                autoUpdate = b("autoUpdate", d.autoUpdate),
                 serverUrl = s("serverUrl", d.serverUrl),
                 serverToken = s("serverToken", d.serverToken),
             )
@@ -102,6 +105,7 @@ class SettingsStore(ctx: Context) {
             .put("autoResume", s.autoResume)
             .put("commMode", s.commMode)
             .put("testMode", s.testMode)
+            .put("autoUpdate", s.autoUpdate)
             .put("serverUrl", s.serverUrl)
             .put("serverToken", s.serverToken)
         prefs.edit().putString("settings", j.toString()).apply()

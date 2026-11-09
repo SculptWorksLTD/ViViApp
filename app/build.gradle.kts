@@ -12,15 +12,29 @@ android {
         applicationId = "it.migliorati.viviapp"
         minSdk = 31
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1"
+        // In GitHub Actions versione e numero di build arrivano dalla compilazione;
+        // in Android Studio restano "dev" (e l'app non propone aggiornamenti).
+        versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
+        versionName = System.getenv("VERSION_NAME") ?: "0.0-dev"
+    }
+
+    // Chiave di firma fissa: indispensabile perché Android accetti gli aggiornamenti.
+    val keystorePath = System.getenv("SIGNING_STORE_FILE")
+    signingConfigs {
+        if (keystorePath != null && file(keystorePath).exists()) {
+            create("viviapp") {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("SIGNING_PASSWORD")
+                keyAlias = "viviapp"
+                keyPassword = System.getenv("SIGNING_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Firma con la chiave di debug: basta per installare l'APK sul tablet.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("viviapp") ?: signingConfigs.getByName("debug")
         }
     }
     compileOptions {
@@ -28,7 +42,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
 }
 
 dependencies {

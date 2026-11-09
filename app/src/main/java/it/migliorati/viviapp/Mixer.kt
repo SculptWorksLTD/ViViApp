@@ -49,6 +49,14 @@ data class MixerState(
     val genStatus: String = "",
 )
 
+data class UpdateState(
+    val available: Updater.Update? = null,
+    val downloading: Boolean = false,
+    val progress: Float = 0f,
+    val message: String = "",
+    val dismissed: Boolean = false,
+)
+
 data class Meters(val level: Float = 0f, val voiceDb: Float = -100f, val duckDb: Float = 0f, val bufferMs: Int = 0)
 
 /** Cervello dell'app: gestisce dispositivi, voce, musica, ducking, libreria e generazione. */
@@ -62,6 +70,7 @@ object Mixer {
     val state = MutableStateFlow(MixerState())
     val meters = MutableStateFlow(Meters())
     val library = MutableStateFlow<List<File>>(emptyList())
+    val updateState = MutableStateFlow(UpdateState())
 
     private lateinit var voice: VoiceEngine
     private lateinit var music: MusicPlayer
@@ -505,6 +514,48 @@ object Mixer {
             }
             reloadLibrary()
             state.update { it.copy(generating = false, genStatus = msg) }
+        }
+    }
+
+    // ---------------- Aggiornamenti ----------------
+
+    /** manual = premuto dall'utente; all'apertura il controllo è silenzioso se non c'è nulla. */
+    fun checkUpdate(manual: Boolean) {
+        if (!manual && Updater.isDevBuild) return
+        scope.launch {
+            if (manual) updateState.value = UpdateState(message = "Controllo aggiornamenti…")
+            try {
+                val u = Updater.check()
+                updateState.value = when {
+                    u != null -> UpdateState(available = u)
+                    manual -> UpdateState(message = "Hai già l'ultima versione (${Updater.currentVersion}).")
+                    else -> UpdateState()
+                }
+            } catch (e: Exception) {
+                if (manual) updateState.value = UpdateState(message = "Impossibile controllare gli aggiornamenti: ${e.message}")
+            }
+        }
+    }
+
+    fun dismissUpdate() = updateState.update { it.copy(dismissed = true) }
+
+    fun startUpdate() {
+        val u = updateState.value.available ?: return
+        if (updateState.value.downloading) return
+        if (!Updater.canInstall(app)) {
+            updateState.update { it.copy(message = "Consenti \"Installa app sconosciute\" per ViViApp, poi torna qui e premi di nuovo Aggiorna.") }
+            Updater.openInstallPermission(app)
+            return
+        }
+        scope.launch {
+            updateState.update { it.copy(downloading = true, progress = 0f, message = "Scarico la versione ${u.version}…") }
+            try {
+                val apk = Updater.download(app, u.url) { p -> updateState.update { it.copy(progress = p) } }
+                updateState.update { it.copy(downloading = false, progress = 1f, message = "Conferma l'installazione nella schermata di Android.") }
+                Updater.install(app, apk)
+            } catch (e: Exception) {
+                updateState.update { it.copy(downloading = false, message = "Aggiornamento non riuscito: ${e.message}") }
+            }
         }
     }
 }
