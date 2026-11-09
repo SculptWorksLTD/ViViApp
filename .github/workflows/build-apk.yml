@@ -3,13 +3,10 @@ name: Compila APK
 on:
   push:
     branches: ["**"]
-    tags: ["v*"]
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Versione da pubblicare come Release (es. v0.1). Vuoto = solo compilazione."
+        description: "Versione da pubblicare come Release (es. v0.2). Vuoto = solo compilazione."
         required: false
         default: ""
 
@@ -19,6 +16,9 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      VERSION_CODE: ${{ github.run_number }}
+      VERSION_NAME: ${{ inputs.release_tag != '' && inputs.release_tag || format('0.0-dev{0}', github.run_number) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -28,36 +28,43 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.10.2
-      - run: gradle assembleRelease
-      - name: Rinomina APK
-        run: cp app/build/outputs/apk/release/*.apk ViViApp-${GITHUB_REF_NAME//\//-}.apk
+
+      # Chiave di firma fissa (dai segreti della repository, oppure dalla cartella signing/)
+      - name: Prepara la chiave di firma
+        env:
+          KEYSTORE_B64: ${{ secrets.SIGNING_KEYSTORE_B64 }}
+          KEYSTORE_PW: ${{ secrets.SIGNING_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/viviapp.jks"
+            echo "SIGNING_PASSWORD=$KEYSTORE_PW" >> "$GITHUB_ENV"
+            echo "SIGNING_STORE_FILE=$RUNNER_TEMP/viviapp.jks" >> "$GITHUB_ENV"
+          elif [ -f signing/viviapp.jks ]; then
+            echo "SIGNING_PASSWORD=$(cat signing/password.txt)" >> "$GITHUB_ENV"
+            echo "SIGNING_STORE_FILE=$GITHUB_WORKSPACE/signing/viviapp.jks" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Nessuna chiave di firma fissa: l'APK non potrà aggiornare quello installato."
+          fi
+
+      - name: Compila
+        run: |
+          export VERSION_NAME="${VERSION_NAME#v}"
+          gradle assembleRelease
+          cp app/build/outputs/apk/release/*.apk "ViViApp-$VERSION_NAME.apk"
+
       - uses: actions/upload-artifact@v4
         with:
           name: ViViApp-apk
           path: ViViApp-*.apk
-      # Quando si pubblica una Release, ci allega l'APK
-      - name: Allega APK alla Release
-        if: github.event_name == 'release'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ github.event.release.tag_name }}" ViViApp-*.apk --clobber
-      # Su un tag v* spinto da git, crea la Release con l'APK
+
+      # Avvio manuale con una versione: crea la Release con l'APK (solo se firmato con la chiave fissa)
       - name: Pubblica Release
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "$GITHUB_REF_NAME" ViViApp-*.apk \
-            --title "ViViApp $GITHUB_REF_NAME" \
-            --notes "Scarica il file .apk qui sotto direttamente sul tablet e aprilo per installare ViViApp (consenti l'installazione da origini sconosciute se richiesto)."
-      # Avvio manuale con una versione: crea la Release e ci allega l'APK
-      - name: Pubblica Release (avvio manuale)
         if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.release_tag }}
         run: |
-          cp ViViApp-*.apk "ViViApp-$TAG.apk" 2>/dev/null || true
-          gh release create "$TAG" "ViViApp-$TAG.apk" --target "$GITHUB_SHA" \
+          if [ -z "$SIGNING_STORE_FILE" ]; then echo "::error::Manca la chiave di firma fissa"; exit 1; fi
+          gh release create "$TAG" ViViApp-*.apk --target "$GITHUB_SHA" \
             --title "ViViApp $TAG" \
-            --notes "Scarica il file .apk qui sotto direttamente sul tablet e aprilo per installare ViViApp (consenti l'installazione da origini sconosciute se richiesto)."
+            --notes "Scarica il file .apk qui sotto direttamente sul tablet e aprilo per installare ViViApp. Dalla 0.2 l'app si aggiorna da sola: all'apertura propone le nuove versioni."

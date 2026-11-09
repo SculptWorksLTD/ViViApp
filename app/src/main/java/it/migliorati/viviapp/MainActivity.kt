@@ -62,6 +62,9 @@ class MainActivity : ComponentActivity() {
 fun App() {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val tabs = listOf("Mixer", "Libreria", "Genera", "Impostazioni")
+    // Controllo aggiornamenti all'apertura
+    LaunchedEffect(Unit) { if (Mixer.settings.value.autoUpdate) Mixer.checkUpdate(manual = false) }
+    UpdateDialog()
     Column(
         Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding()
     ) {
@@ -413,6 +416,8 @@ fun GenerateTab() {
 fun SettingsTab() {
     val s by Mixer.settings.collectAsState()
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+        UpdateSection(s)
+        HorizontalDivider(Modifier.padding(vertical = 12.dp))
         SwitchRow("Modalità prova (senza cavo e senza headset)", s.testMode) { v -> Mixer.update { it.copy(testMode = v) } }
         Text(
             "Per provare l'app sull'emulatore o senza hardware: la voce entra dal microfono del dispositivo " +
@@ -469,4 +474,55 @@ fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
         Text(label, Modifier.weight(1f))
         Switch(checked = checked, onCheckedChange = onChange)
     }
+}
+
+// ---------------------------------------------------------------- Aggiornamenti
+
+@Composable
+fun UpdateDialog() {
+    val u by Mixer.updateState.collectAsState()
+    val st by Mixer.state.collectAsState()
+    val upd = u.available ?: return
+    // Mai durante la lezione: comparirà alla prossima apertura o da Impostazioni
+    if (u.dismissed || st.sessionOn) return
+    AlertDialog(
+        onDismissRequest = { if (!u.downloading) Mixer.dismissUpdate() },
+        title = { Text("Nuova versione ${upd.version}", style = MaterialTheme.typography.titleLarge) },
+        text = {
+            Column {
+                Text("È disponibile un aggiornamento di ViViApp (ora hai la ${Updater.currentVersion}). Musica, impostazioni e brani restano dove sono.")
+                if (u.downloading) {
+                    Spacer(Modifier.height(12.dp))
+                    LinearProgressIndicator(progress = { u.progress }, modifier = Modifier.fillMaxWidth())
+                }
+                if (u.message.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(u.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { Mixer.startUpdate() }, enabled = !u.downloading) {
+                Text(if (u.downloading) "Scarico…" else "Aggiorna")
+            }
+        },
+        dismissButton = {
+            if (!u.downloading) TextButton(onClick = { Mixer.dismissUpdate() }) { Text("Più tardi") }
+        },
+    )
+}
+
+@Composable
+fun UpdateSection(s: Settings) {
+    val u by Mixer.updateState.collectAsState()
+    Text("Aggiornamenti", style = MaterialTheme.typography.titleMedium)
+    Text("Versione installata: ${Updater.currentVersion}", style = MaterialTheme.typography.bodySmall)
+    SwitchRow("Controlla gli aggiornamenti all'apertura", s.autoUpdate) { v -> Mixer.update { it.copy(autoUpdate = v) } }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedButton(onClick = { Mixer.checkUpdate(manual = true) }, enabled = !u.downloading) { Text("Controlla ora") }
+        val avail = u.available
+        if (avail != null) Button(onClick = { Mixer.startUpdate() }, enabled = !u.downloading) { Text("Installa ${avail.version}") }
+    }
+    if (u.downloading) LinearProgressIndicator(progress = { u.progress }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+    if (u.message.isNotEmpty()) Text(u.message, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
 }
