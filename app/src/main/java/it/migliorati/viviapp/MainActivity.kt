@@ -76,16 +76,7 @@ fun App() {
             Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            SunMotif(size = 42.dp)
-            Spacer(Modifier.width(12.dp))
-            Column {
-                Text("ViViApp", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onBackground)
-                Text(
-                    "voce e musica per lo yoga",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            ViViHeader()
         }
         // Schede a pillola
         Row(

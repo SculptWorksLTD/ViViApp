@@ -2,6 +2,17 @@ package it.migliorati.viviapp
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.size
@@ -15,73 +26,67 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlin.math.PI
-import kotlin.math.cos
-import kotlin.math.sin
 
-// Palette boho: terracotta, salvia, sabbia, crema, ocra
-private val Terracotta = Color(0xFFB4653F)
-private val TerracottaLight = Color(0xFFE39A76)
-private val Sage = Color(0xFF7C8B6F)
-private val SageLight = Color(0xFFA9B79B)
-private val Ochre = Color(0xFFC99A3B)
-private val Cream = Color(0xFFF6EFE6)
-private val Ink = Color(0xFF3B2F28)
+// Palette ViVi "Oltre il Benessere": salvia, verde tenero, oliva, crema
+private val SageDeep = Color(0xFF6B7B66)      // pulsanti (scritta ViVi, un tono più scura per la leggibilità)
+private val SageWord = Color(0xFF889583)      // colore della scritta ViVi
+private val LeafGreen = Color(0xFFBBCBA8)     // cerchio del logo
+private val Olive = Color(0xFF3F4325)         // tratto della foglia
+private val Cream = Color(0xFFF1EDE3)         // fondo
+private val Mist = Color(0xFFD2D3C5)          // forme di sfondo
 
 private val LightColors = lightColorScheme(
-    primary = Terracotta,
+    primary = SageDeep,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFF2D9C9),
-    onPrimaryContainer = Color(0xFF4A2412),
-    secondary = Sage,
+    primaryContainer = Color(0xFFDDE6D3),
+    onPrimaryContainer = Color(0xFF2C3528),
+    secondary = Color(0xFF8DA37F),
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFE1E6D8),
+    secondaryContainer = Color(0xFFE4EBDA),
     onSecondaryContainer = Color(0xFF2E3626),
-    tertiary = Ochre,
+    tertiary = Olive,
+    onTertiary = Color.White,
     background = Cream,
-    onBackground = Ink,
-    surface = Color(0xFFFBF7F1),
-    onSurface = Ink,
-    surfaceVariant = Color(0xFFEFE5D9),
-    onSurfaceVariant = Color(0xFF7A6A5E),
-    surfaceContainerHighest = Color(0xFFFFFCF8),
-    surfaceContainerHigh = Color(0xFFFBF6EF),
-    surfaceContainer = Color(0xFFF8F1E8),
-    outline = Color(0xFFCDBBA8),
-    outlineVariant = Color(0xFFE6D9CA),
+    onBackground = Color(0xFF3A3D2C),
+    surface = Color(0xFFF7F4EC),
+    onSurface = Color(0xFF3A3D2C),
+    surfaceVariant = Color(0xFFE6E7DA),
+    onSurfaceVariant = Color(0xFF6E7266),
+    surfaceContainerHighest = Color(0xFFFBF9F4),
+    surfaceContainerHigh = Color(0xFFF8F6EF),
+    surfaceContainer = Color(0xFFF4F1E8),
+    outline = Color(0xFFC3C6B4),
+    outlineVariant = Mist,
 )
 
 private val DarkColors = darkColorScheme(
-    primary = TerracottaLight,
-    onPrimary = Color(0xFF3A1A0C),
-    primaryContainer = Color(0xFF5C3320),
-    onPrimaryContainer = Color(0xFFF7DCCD),
-    secondary = SageLight,
-    onSecondary = Color(0xFF1F2618),
-    secondaryContainer = Color(0xFF3B4433),
-    onSecondaryContainer = Color(0xFFDDE5D2),
-    tertiary = Color(0xFFE2BC6A),
-    background = Color(0xFF221B17),
-    onBackground = Color(0xFFEFE4D8),
-    surface = Color(0xFF2A221D),
-    onSurface = Color(0xFFEFE4D8),
-    surfaceVariant = Color(0xFF3A2F28),
-    onSurfaceVariant = Color(0xFFBFAE9F),
-    surfaceContainerHighest = Color(0xFF2E2520),
-    surfaceContainerHigh = Color(0xFF2B231E),
-    surfaceContainer = Color(0xFF28201B),
-    outline = Color(0xFF5A4B41),
-    outlineVariant = Color(0xFF41352D),
+    primary = Color(0xFFB4C6A6),
+    onPrimary = Color(0xFF1E2A18),
+    primaryContainer = Color(0xFF3D4A37),
+    onPrimaryContainer = Color(0xFFDDE6D3),
+    secondary = LeafGreen,
+    onSecondary = Color(0xFF1F2818),
+    secondaryContainer = Color(0xFF39432F),
+    onSecondaryContainer = Color(0xFFE0E8D5),
+    tertiary = Color(0xFFD9D5B8),
+    background = Color(0xFF1E211B),
+    onBackground = Color(0xFFE9E8DC),
+    surface = Color(0xFF252922),
+    onSurface = Color(0xFFE9E8DC),
+    surfaceVariant = Color(0xFF353A31),
+    onSurfaceVariant = Color(0xFFBDC0B1),
+    surfaceContainerHighest = Color(0xFF2A2F27),
+    surfaceContainerHigh = Color(0xFF282C24),
+    surfaceContainer = Color(0xFF242820),
+    outline = Color(0xFF555B4D),
+    outlineVariant = Color(0xFF3B4036),
 )
 
 private val Serif = FontFamily.Serif
@@ -125,37 +130,35 @@ fun SoftCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() 
     )
 }
 
-/** Piccolo sole che sorge: il motivo grafico dell'app. */
+/** Logo ViVi: emblema, scritta e motto "Oltre il Benessere". */
 @Composable
-fun SunMotif(size: Dp = 40.dp, color: Color = MaterialTheme.colorScheme.primary, accent: Color = MaterialTheme.colorScheme.tertiary) {
-    Canvas(Modifier.size(size)) {
-        val w = this.size.width
-        val h = this.size.height
-        val cx = w / 2
-        val base = h * 0.78f
-        val r = w * 0.26f
-        val stroke = w * 0.055f
-        // raggi
-        for (i in 0..6) {
-            val a = PI + PI * i / 6.0
-            val c = cos(a).toFloat()
-            val s = sin(a).toFloat()
-            drawLine(
-                accent,
-                Offset(cx + c * r * 1.35f, base + s * r * 1.35f),
-                Offset(cx + c * r * 1.85f, base + s * r * 1.85f),
-                strokeWidth = stroke, cap = StrokeCap.Round,
+fun ViViHeader(emblemSize: Dp = 52.dp) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Image(
+            painter = painterResource(R.drawable.vivi_emblem),
+            contentDescription = "Logo ViVi",
+            modifier = Modifier.size(emblemSize),
+        )
+        Spacer(Modifier.width(14.dp))
+        Column {
+            Image(
+                painter = painterResource(R.drawable.vivi_wordmark),
+                contentDescription = "ViVi",
+                modifier = Modifier.height(30.dp),
+                colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary),
+            )
+            Text(
+                "Oltre il Benessere",
+                fontFamily = FontFamily.Serif,
+                fontStyle = FontStyle.Italic,
+                fontSize = 16.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        // mezzo sole
-        drawArc(color, 180f, 180f, useCenter = true, topLeft = Offset(cx - r, base - r), size = Size(2 * r, 2 * r))
-        // orizzonte
-        drawLine(color, Offset(w * 0.08f, base + stroke), Offset(w * 0.92f, base + stroke), strokeWidth = stroke, cap = StrokeCap.Round)
-        drawLine(color.copy(alpha = 0.5f), Offset(w * 0.24f, base + stroke * 3f), Offset(w * 0.76f, base + stroke * 3f), strokeWidth = stroke, cap = StrokeCap.Round)
     }
 }
 
-/** Puntino di stato (salvia = in onda, sabbia = fermo). */
+/** Puntino di stato (verde = in onda, grigio = fermo). */
 @Composable
 fun StatusDot(active: Boolean, size: Dp = 10.dp) {
     val c = if (active) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outline
