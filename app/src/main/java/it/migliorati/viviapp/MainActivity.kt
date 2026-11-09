@@ -15,6 +15,9 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -61,7 +64,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun App() {
     var tab by rememberSaveable { mutableIntStateOf(0) }
-    val tabs = listOf("Mixer", "Libreria", "Genera", "Impostazioni")
+    val tabs = listOf("Mixer", "Libreria", "Cerca musica", "Genera", "Impostazioni")
     // Controllo aggiornamenti all'apertura
     LaunchedEffect(Unit) { if (Mixer.settings.value.autoUpdate) Mixer.checkUpdate(manual = false) }
     UpdateDialog()
@@ -106,7 +109,8 @@ fun App() {
             when (tab) {
                 0 -> MixerTab()
                 1 -> LibraryTab()
-                2 -> GenerateTab()
+                2 -> SearchTab()
+                3 -> GenerateTab()
                 else -> SettingsTab()
             }
         }
@@ -304,7 +308,13 @@ fun LibraryTab() {
                                 f.nameWithoutExtension, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 fontWeight = if (playing) FontWeight.Bold else FontWeight.Normal,
                             )
-                            Text("%.1f MB".format(f.length() / 1_048_576.0), style = MaterialTheme.typography.bodySmall)
+                            val credit = remember(f) { MusicFinder.creditOf(f) }
+                            Text(
+                                credit ?: "%.1f MB".format(f.length() / 1_048_576.0),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            )
                         }
                         TextButton(onClick = { Mixer.play(f) }) { Text("▶  Suona") }
                         TextButton(onClick = { toDelete = f }) { Text("Elimina") }
@@ -322,6 +332,144 @@ fun LibraryTab() {
             confirmButton = { TextButton(onClick = { Mixer.delete(f); toDelete = null }) { Text("Elimina") } },
             dismissButton = { TextButton(onClick = { toDelete = null }) { Text("Annulla") } },
         )
+    }
+}
+
+// ---------------------------------------------------------------- Cerca musica
+
+private val searchPresets = listOf(
+    "meditation", "ambient", "relaxing piano", "yoga", "nature", "tibetan", "flute", "handpan", "lounge chill",
+)
+
+@Composable
+fun SearchTab() {
+    val f by MusicFinder.state.collectAsState()
+    var query by rememberSaveable { mutableStateOf("") }
+    var useOv by rememberSaveable { mutableStateOf(true) }
+    var useIa by rememberSaveable { mutableStateOf(true) }
+    val doSearch = { MusicFinder.search(query, useOv, useIa) }
+    // L'anteprima si ferma quando si cambia scheda
+    DisposableEffect(Unit) { onDispose { MusicFinder.stopPreview() } }
+
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        item {
+            SoftCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(20.dp)) {
+                    Text("Musica libera da scaricare", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Solo brani con licenze che permettono l'uso nelle lezioni a pagamento. Cerca in inglese.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(
+                            value = query, onValueChange = { query = it },
+                            placeholder = { Text("es. meditation, ambient, flute…") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                            keyboardActions = KeyboardActions(onSearch = { doSearch() }),
+                            modifier = Modifier.weight(1f),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Button(onClick = { doSearch() }, enabled = query.isNotBlank() && !f.loading) { Text("Cerca") }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        searchPresets.forEach { p ->
+                            FilterChip(selected = query == p, onClick = { query = p; MusicFinder.search(p, useOv, useIa) }, label = { Text(p) })
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(selected = useOv, onClick = { useOv = !useOv }, label = { Text("Openverse") })
+                        FilterChip(selected = useIa, onClick = { useIa = !useIa }, label = { Text("Internet Archive") })
+                    }
+                    if (f.loading) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp))
+                    if (f.message.isNotEmpty()) Text(
+                        f.message, style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp),
+                    )
+                }
+            }
+        }
+        if (f.tracks.isNotEmpty()) item { SectionLabel("Brani") }
+        items(f.tracks, key = { it.id }) { t -> TrackRow(t, f) }
+        if (f.albums.isNotEmpty()) item { SectionLabel("Album da Internet Archive") }
+        f.albums.forEach { a ->
+            item(key = "album:" + a.id) {
+                val open = a.id in f.expanded
+                SoftCard(Modifier.fillMaxWidth()) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(a.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "${a.creator} · ${a.license}", style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        TextButton(onClick = { MusicFinder.toggleAlbum(a) }) { Text(if (open) "Chiudi" else "Brani ▾") }
+                    }
+                }
+            }
+            if (a.id in f.expanded) {
+                if (a.id in f.albumLoading) item(key = "load:" + a.id) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 24.dp))
+                }
+                val tr = a.tracks.orEmpty()
+                if (a.tracks != null && tr.isEmpty()) item(key = "empty:" + a.id) {
+                    Text("Nessun mp3 in questo album.", Modifier.padding(start = 24.dp), style = MaterialTheme.typography.bodySmall)
+                }
+                items(tr, key = { it.id }) { t -> Box(Modifier.padding(start = 16.dp)) { TrackRow(t, f) } }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text, style = MaterialTheme.typography.titleMedium,
+        modifier = Modifier.padding(top = 8.dp, start = 4.dp),
+    )
+}
+
+@Composable
+private fun TrackRow(t: FoundTrack, f: FinderState) {
+    val playing = f.previewId == t.id
+    SoftCard(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(t.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = if (playing) FontWeight.Bold else FontWeight.Normal)
+                val dur = t.durationSec?.let { "%d:%02d".format(it / 60, it % 60) }
+                Text(
+                    listOfNotNull(t.creator, dur, t.license, t.source).joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+            }
+            TextButton(onClick = { MusicFinder.togglePreview(t) }) {
+                Text(
+                    when {
+                        playing && f.previewLoading -> "…"
+                        playing -> "■ Stop"
+                        else -> "▶ Ascolta"
+                    }
+                )
+            }
+            when {
+                t.id in f.downloaded -> Text("✓ In libreria", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.labelLarge)
+                t.id in f.downloading -> CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                else -> Button(onClick = { MusicFinder.download(t) }) { Text("Scarica") }
+            }
+        }
     }
 }
 
