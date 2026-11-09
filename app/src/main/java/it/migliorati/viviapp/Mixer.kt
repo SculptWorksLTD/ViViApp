@@ -659,6 +659,10 @@ object Mixer {
     }
 
     fun startRecorderWith(projection: MediaProjection) {
+        // Android 14+: la cattura richiede un callback registrato; se il sistema la interrompe, chiudiamo il file
+        projection.registerCallback(object : MediaProjection.Callback() {
+            override fun onStop() { Recorder.stop() }
+        }, Handler(Looper.getMainLooper()))
         val stamp = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.ROOT).format(Date())
         val out = uniqueFile("ViVi_$stamp.m4a", recordingsDir)
         Recorder.start(projection, out) { f, err -> scope.launch { onRecordingFinished(f, err) } }
