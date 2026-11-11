@@ -1,7 +1,7 @@
 name: Pulizia release vecchie
 
-# Cancella tutte le release e i tag tranne quello indicato
-# (le release vecchie contenevano l'archivio "Source code" con il sorgente).
+# Cancella tutte le release e i tag tranne quello indicato, e tutti i rami tranne main
+# (release e rami vecchi contenevano il sorgente).
 
 on:
   workflow_dispatch:
@@ -32,4 +32,9 @@ jobs:
             [ "$t" = "$KEEP" ] && continue
             echo "Cancello tag $t"
             gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$t"
+          done
+          for b in $(gh api "repos/$GITHUB_REPOSITORY/branches" --paginate -q '.[].name'); do
+            [ "$b" = "main" ] && continue
+            echo "Cancello ramo $b"
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$b"
           done
