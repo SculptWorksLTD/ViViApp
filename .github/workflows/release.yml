@@ -1,0 +1,51 @@
+name: Compila e pubblica
+
+# I sorgenti sono nella repo privata SculptWorksLTD/ViViAppSource: vengono letti solo
+# dentro la macchina di compilazione (segreto SOURCE_TOKEN) e qui si pubblica solo l'APK.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Versione da pubblicare (es. v0.9)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sorgenti (repo privata)
+        uses: actions/checkout@v4
+        with:
+          repository: SculptWorksLTD/ViViAppSource
+          token: ${{ secrets.SOURCE_TOKEN }}
+          path: src
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
+      - name: Compila (APK offuscato e firmato)
+        working-directory: src
+        env:
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          export VERSION_CODE=$(( ${{ github.run_number }} + 200 ))
+          export VERSION_NAME="${TAG#v}"
+          export SIGNING_STORE_FILE="$PWD/signing/viviapp.jks"
+          export SIGNING_PASSWORD="$(cat signing/password.txt)"
+          gradle -q assembleRelease
+          cp app/build/outputs/apk/release/*.apk "$GITHUB_WORKSPACE/ViViApp-$VERSION_NAME.apk"
+      - name: Pubblica la release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          gh release create "$TAG" ViViApp-*.apk --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "ViViApp $TAG" \
+            --notes "Scarica il file .apk qui sotto direttamente sul tablet e aprilo per installare ViViApp. L'app si aggiorna da sola: all'apertura propone le nuove versioni. © Enrico Migliorati – SculptWorksLTD. Tutti i diritti riservati."

@@ -1,0 +1,40 @@
+name: Pulizia release vecchie
+
+# Cancella tutte le release e i tag tranne quello indicato, e tutti i rami tranne main
+# (release e rami vecchi contenevano il sorgente).
+
+on:
+  workflow_dispatch:
+    inputs:
+      keep_tag:
+        description: "Tag da tenere (es. v0.8)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cancella release e tag vecchi
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEEP: ${{ inputs.keep_tag }}
+        run: |
+          gh release view "$KEEP" --repo "$GITHUB_REPOSITORY" > /dev/null || { echo "::error::La release $KEEP non esiste: non cancello niente"; exit 1; }
+          for t in $(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate -q '.[].tag_name'); do
+            [ "$t" = "$KEEP" ] && continue
+            echo "Cancello release $t"
+            gh release delete "$t" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+          done
+          for t in $(gh api "repos/$GITHUB_REPOSITORY/tags" --paginate -q '.[].name'); do
+            [ "$t" = "$KEEP" ] && continue
+            echo "Cancello tag $t"
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$t"
+          done
+          for b in $(gh api "repos/$GITHUB_REPOSITORY/branches" --paginate -q '.[].name'); do
+            [ "$b" = "main" ] && continue
+            echo "Cancello ramo $b"
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$b"
+          done
