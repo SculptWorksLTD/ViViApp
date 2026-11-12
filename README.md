@@ -4,11 +4,11 @@
 
 La voce dell'insegnante (headset Bluetooth) e la musica vengono mixate sul tablet e mandate, dal cavo USB-C, al trasmettitore delle cuffie delle clienti.
 
-## Scaricare e installare
+## Scarica
 
-1. Dal tablet apri l'ultima versione: **[Releases → Latest](https://github.com/SculptWorksLTD/ViViApp/releases/latest)**
-2. Scarica il file `.apk` e aprilo. Se Android lo chiede, consenti l'installazione da questa origine.
-3. L'app si aggiorna da sola: all'apertura propone le nuove versioni.
+**[⬇ Scarica ViViApp per Android](https://github.com/SculptWorksLTD/ViViApp/releases/latest/download/ViViApp.apk)**
+
+Apri questa pagina dal tablet, tocca il link e apri il file scaricato (se Android lo chiede, consenti l'installazione da questa origine). L'app si aggiorna da sola.
 
 **Manuale / Manual / Priručnik:** [Italiano](docs/MANUALE_IT.md) · [English](docs/MANUAL_EN.md) · [Hrvatski](docs/PRIRUCNIK_HR.md)
 

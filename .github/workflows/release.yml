@@ -46,6 +46,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.release_tag }}
         run: |
-          gh release create "$TAG" ViViApp-*.apk --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "ViViApp $TAG" \
-            --notes "Scarica il file .apk qui sotto direttamente sul tablet e aprilo per installare ViViApp. L'app si aggiorna da sola: all'apertura propone le nuove versioni. © Enrico Migliorati – SculptWorksLTD. Tutti i diritti riservati."
+          # nome fisso: il link di download resta sempre uguale (l'app trova il file .apk da sola)
+          mv ViViApp-*.apk ViViApp.apk
+          D="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
+          printf '%s\n' "## Scarica" "" "**[⬇ Scarica ViViApp per Android](${D}/ViViApp.apk)**" "" \
+            "Apri questa pagina dal tablet, tocca il link e apri il file scaricato. Se Android lo chiede, consenti l'installazione da questa origine. L'app si aggiorna da sola: all'apertura propone le nuove versioni." "" \
+            "© Enrico Migliorati – SculptWorksLTD. Tutti i diritti riservati." > notes.md
+          gh release create "$TAG" ViViApp.apk --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "ViViApp $TAG" --notes-file notes.md
